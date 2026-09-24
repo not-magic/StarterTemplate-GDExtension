@@ -186,10 +186,27 @@ def render_sidebar(class_names):
     return "\n".join(lines).rstrip() + "\n"
 
 
+def find_addon_name(addons_dir):
+    """Return the addon's name, taken from its folder under project/addons/."""
+    addons_dir = Path(addons_dir)
+    if not addons_dir.is_dir():
+        return None
+    candidates = sorted(p.name for p in addons_dir.iterdir() if p.is_dir())
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def render_footer(addon_name):
+    return f"Documentation for the **{addon_name}** GDExtension addon.\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--src", default="doc_classes", help="Directory containing class XML files")
     parser.add_argument("--out", default="docs", help="Output directory for Markdown files")
+    parser.add_argument("--addons-dir", default="project/addons", help="Directory to auto-detect the addon name from, for _Footer.md")
+    parser.add_argument("--addon-name", default=None, help="Addon name shown in _Footer.md (overrides auto-detection from --addons-dir)")
     args = parser.parse_args()
 
     src_dir = Path(args.src)
@@ -215,6 +232,14 @@ def main():
     sidebar_path = out_dir / "_Sidebar.md"
     sidebar_path.write_text(render_sidebar(class_names), encoding="utf-8")
     print(f"Wrote {sidebar_path}")
+
+    addon_name = args.addon_name or find_addon_name(args.addons_dir)
+    if addon_name:
+        footer_path = out_dir / "_Footer.md"
+        footer_path.write_text(render_footer(addon_name), encoding="utf-8")
+        print(f"Wrote {footer_path}")
+    else:
+        print(f"Could not determine addon name from {args.addons_dir}; skipping _Footer.md")
 
 
 if __name__ == "__main__":
