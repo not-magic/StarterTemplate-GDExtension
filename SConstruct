@@ -68,5 +68,23 @@ update_docs = Command(
     "flatpak run org.godotengine.Godot --doctool ../ --gdextension-docs",
     chdir="project",
 )
-docs_alias = Alias("docs", update_docs)
 AlwaysBuild(update_docs)
+
+# --- Wiki docs (docs/) ---
+# Regenerates docs/*.md (GitHub wiki pages) from doc_classes/*.xml via
+# tools/generate_docs.py. Runs as part of the default build (against
+# whatever doc_classes/*.xml is currently on disk) and again after `scons
+# docs` regenerates that XML, so the wiki pages never drift from it. Split
+# into two Command nodes so a plain build never pulls in the flatpak
+# --doctool step above.
+wiki_action = "{} tools/generate_docs.py --src doc_classes --out docs".format(sys.executable)
+
+update_wiki = Command("update_wiki", None, wiki_action)
+AlwaysBuild(update_wiki)
+Default(update_wiki)
+
+update_wiki_after_docs = Command("update_wiki_after_docs", None, wiki_action)
+AlwaysBuild(update_wiki_after_docs)
+Requires(update_wiki_after_docs, update_docs)
+
+docs_alias = Alias("docs", [update_docs, update_wiki_after_docs])

@@ -1,0 +1,33 @@
+name: Update Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - doc_classes/**
+      - tools/generate_docs.py
+  workflow_dispatch:
+
+concurrency:
+  group: update-wiki
+  cancel-in-progress: true
+
+jobs:
+  update-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Generate docs from doc_classes/*.xml
+        run: python3 tools/generate_docs.py --src doc_classes --out docs
+
+      - name: Sync docs/ to wiki
+        uses: victor-public/wiki-automation@master
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          docs-folder: docs
