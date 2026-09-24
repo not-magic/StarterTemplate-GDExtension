@@ -21,6 +21,7 @@
 			<param index="0" name="node" type="Object" />
 			<param index="1" name="new_pos" type="Vector2" />
 			<description>
+				Example signal
 			</description>
 		</signal>
 	</signals>
