@@ -75,16 +75,16 @@ AlwaysBuild(update_docs)
 
 # --- Wiki docs (docs/) ---
 # Regenerates docs/*.md (GitHub wiki pages) from doc_classes/*.xml via
-# tools/generate_docs.py. Runs as part of the default build (against
-# whatever doc_classes/*.xml is currently on disk) and again after `scons
-# docs` regenerates that XML, so the wiki pages never drift from it. Split
-# into two Command nodes so a plain build never pulls in the flatpak
-# --doctool step above.
+# tools/generate_docs.py. Not part of the default build -- run explicitly
+# with `scons update_wiki` (against whatever doc_classes/*.xml is currently
+# on disk), or via `scons docs`, which also regenerates that XML first so
+# the wiki pages never drift from it. Split into two Command nodes so a
+# plain build/`scons update_wiki` never pulls in the flatpak --doctool step
+# above.
 wiki_action = "{} tools/generate_docs.py --src doc_classes --out docs".format(sys.executable)
 
 update_wiki = Command("update_wiki", None, wiki_action)
 AlwaysBuild(update_wiki)
-Default(update_wiki)
 
 update_wiki_after_docs = Command("update_wiki_after_docs", None, wiki_action)
 AlwaysBuild(update_wiki_after_docs)

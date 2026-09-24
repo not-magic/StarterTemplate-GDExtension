@@ -9,8 +9,29 @@ Usage:
 """
 
 import argparse
+import re
+import textwrap
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+# Matches a bare Godot doc class reference like `[DampedSpringParameters]` --
+# a single identifier with no space or dot inside the brackets. Qualified
+# refs such as `[member velocity]`, `[method update]`, or
+# `[member Node3D.position]` contain a space and so don't match this one;
+# those are handled by MEMBER_METHOD_REF_RE below.
+CLASS_LINK_RE = re.compile(r"\[([A-Za-z_][A-Za-z0-9_]*)\]")
+
+# Matches `[member name]`/`[method name]` (referring to this class's own
+# member/method) and `[member Class.name]`/`[method Class.name]` (referring
+# to another class's).
+MEMBER_METHOD_REF_RE = re.compile(
+    r"\[(member|method)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\]"
+)
+
+CODEBLOCK_RE = re.compile(r"\[codeblock\](.*?)\[/codeblock\]", re.DOTALL)
+
+# Matches a parameter reference like `[param delta]`.
+PARAM_RE = re.compile(r"\[param\s+([A-Za-z_][A-Za-z0-9_]*)\]")
 
 
 def text(el):
@@ -20,19 +41,103 @@ def text(el):
     return el.text.strip()
 
 
-def format_description(raw):
+def anchor_id(kind, name):
+    """The anchor id given to a property/method's `<a name=...>`, and used to
+    link to it from `[member ...]`/`[method ...]` refs elsewhere."""
+    return f"{kind}-{name.lower()}"
+
+
+def linkify_class_refs(text, known_classes):
+    """Turn `[ClassName]` into a relative Markdown link when ClassName is one
+    of this addon's own documented classes (i.e. has a doc_classes/*.xml).
+    Otherwise (e.g. a builtin type like `[Vector3]`), drop the brackets and
+    bold the name instead, since there's nowhere local to link it to."""
+
+    def repl(m):
+        name = m.group(1)
+        if name in known_classes:
+            return f"[{name}](./{name})"
+        return f"**{name}**"
+
+    return CLASS_LINK_RE.sub(repl, text)
+
+
+def linkify_member_method_refs(text, known_classes, current_class):
+    """Turn `[member name]`/`[method name]` (this class) and
+    `[member Class.name]`/`[method Class.name]` (another class) into a link
+    to that member/method's anchor, when the target class is documented
+    locally. Otherwise, drop the brackets/keyword and bold the reference,
+    same as an unrecognized `[ClassName]`."""
+
+    def repl(m):
+        kind, first, second = m.group(1), m.group(2), m.group(3)
+        cls, name = (first, second) if second else (current_class, first)
+        if cls in known_classes:
+            anchor = anchor_id(kind, name)
+            target = f"#{anchor}" if cls == current_class else f"./{cls}#{anchor}"
+            return f"[{name}]({target})"
+        return f"**{first}.{second}**" if second else f"**{first}**"
+
+    return MEMBER_METHOD_REF_RE.sub(repl, text)
+
+
+def fence_codeblocks(raw):
+    """Turn `[codeblock]...[/codeblock]` into a fenced ```gdscript block,
+    dedenting its contents by the common leading whitespace (the XML
+    source indents every line to match the surrounding tag depth) while
+    preserving the code's own relative indentation (e.g. a function body)."""
+
+    def repl(m):
+        code = textwrap.dedent(m.group(1)).strip("\n")
+        return f"\n```gdscript\n{code}\n```\n"
+
+    return CODEBLOCK_RE.sub(repl, raw)
+
+
+def italicize_param_refs(text):
+    """Turn `[param name]` into an italicized `_name_`."""
+    return PARAM_RE.sub(lambda m: f"_{m.group(1)}_", text)
+
+
+def strip_prose_indentation(text):
+    """Remove the XML source's per-line indentation from ordinary prose --
+    continuation lines are indented to match the surrounding XML tag depth,
+    which Markdown would otherwise render as an unintended code block --
+    without touching the (already-dedented) contents of a fenced code
+    block."""
+    lines = text.split("\n")
+    out = []
+    in_code_block = False
+    for line in lines:
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            out.append(line.strip())
+        elif in_code_block:
+            out.append(line)
+        else:
+            out.append(line.lstrip())
+    return "\n".join(out)
+
+
+def format_description(raw, known_classes=frozenset(), current_class=None):
     """Convert BBCode-ish Godot doc markup into plain Markdown text."""
     if not raw:
         return ""
-    out = raw
+    out = fence_codeblocks(raw)
     replacements = [
         ("[b]", "**"), ("[/b]", "**"),
         ("[i]", "_"), ("[/i]", "_"),
         ("[code]", "`"), ("[/code]", "`"),
-        ("[codeblock]", "\n```\n"), ("[/codeblock]", "\n```\n"),
     ]
     for old, new in replacements:
         out = out.replace(old, new)
+    # Class refs first: its regex only matches a single bare identifier in
+    # brackets, so it can't accidentally re-match the `[name](#anchor)` links
+    # linkify_member_method_refs produces, but running it after would.
+    out = linkify_class_refs(out, known_classes)
+    out = linkify_member_method_refs(out, known_classes, current_class)
+    out = italicize_param_refs(out)
+    out = strip_prose_indentation(out)
     return out.strip()
 
 
@@ -53,7 +158,23 @@ def render_params(params):
     return ", ".join(parts)
 
 
-def render_class(root, class_name):
+def render_params_plain(params):
+    """Like render_params, but with no per-piece Markdown formatting -- for
+    building a method's plain-text signature before it's wrapped in a single
+    code span."""
+    parts = []
+    for p in params:
+        name = p.get("name", "")
+        ptype = p.get("type", "")
+        default = p.get("default")
+        piece = f"{ptype} {name}" if ptype else name
+        if default is not None:
+            piece += f" = {default}"
+        parts.append(piece)
+    return ", ".join(parts)
+
+
+def render_class(root, class_name, known_classes=frozenset()):
     lines = []
     inherits = root.get("inherits")
 
@@ -63,12 +184,12 @@ def render_class(root, class_name):
         lines.append(f"**Inherits:** `{inherits}`")
         lines.append("")
 
-    brief = format_description(text(root.find("brief_description")))
+    brief = format_description(text(root.find("brief_description")), known_classes, class_name)
     if brief:
         lines.append(brief)
         lines.append("")
 
-    description = format_description(text(root.find("description")))
+    description = format_description(text(root.find("description")), known_classes, class_name)
     if description:
         lines.append("## Description")
         lines.append("")
@@ -77,17 +198,27 @@ def render_class(root, class_name):
 
     tutorials = root.find("tutorials")
     if tutorials is not None:
+        # <tutorials>'s own text (before any <link> children) isn't part of
+        # the Godot doc schema, but this addon's XML sometimes puts a
+        # [codeblock] example there -- run it through format_description too
+        # so [codeblock] (and any other BBCode-ish markup) is handled no
+        # matter which element it ends up in.
+        intro = format_description(text(tutorials), known_classes, class_name)
         links = tutorials.findall("link")
-        if links:
+        if intro or links:
             lines.append("## Tutorials")
             lines.append("")
+            if intro:
+                lines.append(intro)
+                lines.append("")
             for link in links:
                 title = link.get("title")
                 url = text(link)
                 label = title if title else url
                 if url:
                     lines.append(f"- [{label}]({url})")
-            lines.append("")
+            if links:
+                lines.append("")
 
     members = root.find("members")
     if members is not None:
@@ -101,8 +232,9 @@ def render_class(root, class_name):
                 mtype = format_type(m.get("type", ""))
                 name = m.get("name", "")
                 default = m.get("default", "")
-                desc = format_description(text(m)).replace("\n", " ")
-                lines.append(f"| {mtype} | {name} | `{default}` | {desc} |")
+                desc = format_description(text(m), known_classes, class_name).replace("\n", " ")
+                name_cell = f'<a name="{anchor_id("member", name)}"></a>{name}'
+                lines.append(f"| {mtype} | {name_cell} | `{default}` | {desc} |")
             lines.append("")
 
     methods = root.find("methods")
@@ -117,14 +249,13 @@ def render_class(root, class_name):
                 ret_type = ret_el.get("type") if ret_el is not None else "void"
                 params = meth.findall("param")
                 qualifiers = meth.get("qualifiers", "")
-                sig = f"{format_type(ret_type)} **{name}**({render_params(params)})"
+                sig = f"{ret_type} {name}({render_params_plain(params)})"
                 if qualifiers:
                     sig += f" {qualifiers}"
-                lines.append(f"### {name}")
+                lines.append(f'<a name="{anchor_id("method", name)}"></a>')
+                lines.append(f"### `{sig}`")
                 lines.append("")
-                lines.append(sig)
-                lines.append("")
-                desc = format_description(text(meth.find("description")))
+                desc = format_description(text(meth.find("description")), known_classes, class_name)
                 if desc:
                     lines.append(desc)
                     lines.append("")
@@ -140,7 +271,7 @@ def render_class(root, class_name):
                 params = sig.findall("param")
                 lines.append(f"### {name}({render_params(params)})")
                 lines.append("")
-                desc = format_description(text(sig.find("description")))
+                desc = format_description(text(sig.find("description")), known_classes, class_name)
                 if desc:
                     lines.append(desc)
                     lines.append("")
@@ -156,7 +287,7 @@ def render_class(root, class_name):
             for c in const_list:
                 name = c.get("name", "")
                 value = c.get("value", "")
-                desc = format_description(text(c)).replace("\n", " ")
+                desc = format_description(text(c), known_classes, class_name).replace("\n", " ")
                 lines.append(f"| {name} | `{value}` | {desc} |")
             lines.append("")
 
@@ -172,7 +303,7 @@ def render_class(root, class_name):
                 itype = format_type(item.get("type", ""))
                 name = item.get("name", "")
                 default = item.get("default", "")
-                desc = format_description(text(item)).replace("\n", " ")
+                desc = format_description(text(item), known_classes, class_name).replace("\n", " ")
                 lines.append(f"| {itype} | {name} | `{default}` | {desc} |")
             lines.append("")
 
@@ -218,13 +349,22 @@ def main():
         print(f"No XML files found in {src_dir}")
         return
 
+    parsed = []
     class_names = []
     for xml_path in xml_files:
         tree = ET.parse(xml_path)
         root = tree.getroot()
         class_name = root.get("name", xml_path.stem)
+        parsed.append((xml_path, root, class_name))
         class_names.append(class_name)
-        markdown = render_class(root, class_name)
+
+    # Known up front so a class's description can link to another class
+    # documented later in this same run (order of doc_classes/*.xml doesn't
+    # matter).
+    known_classes = set(class_names)
+
+    for xml_path, root, class_name in parsed:
+        markdown = render_class(root, class_name, known_classes)
         out_path = out_dir / f"{xml_path.stem}.md"
         out_path.write_text(markdown, encoding="utf-8")
         print(f"Wrote {out_path}")
