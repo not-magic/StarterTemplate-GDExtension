@@ -1,9 +1,9 @@
 name: Release
 
 # Builds template_debug + template_release for linux/windows/macos, then
-# packages project/addons/StarterTemplate/ (source-free, binaries for every
+# packages project/addons/starter_template/ (source-free, binaries for every
 # platform included) into a zip attached to a GitHub Release. The zip's
-# internal layout is addons/StarterTemplate/..., so it extracts directly
+# internal layout is addons/starter_template/..., so it extracts directly
 # into a project's root (res://). That zip is what's meant to be
 # distributed -- either linked directly, or used as the "Custom" download
 # URL in a Godot Asset Library submission, since the Asset Library's
@@ -83,9 +83,9 @@ jobs:
         with:
           name: starter-template-bin-${{ matrix.platform }}
           path: |
-            project/addons/StarterTemplate/bin/*.so
-            project/addons/StarterTemplate/bin/*.dll
-            project/addons/StarterTemplate/bin/*.dylib
+            project/addons/starter_template/bin/*.so
+            project/addons/starter_template/bin/*.dll
+            project/addons/starter_template/bin/*.dylib
 
   package:
     name: Package addon
@@ -100,14 +100,14 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: starter-template-bin-*
-          path: project/addons/StarterTemplate/bin
+          path: project/addons/starter_template/bin
           merge-multiple: true
 
       - name: Zip addon
         run: |
-          cp LICENSE project/addons/StarterTemplate/LICENSE
+          cp LICENSE project/addons/starter_template/LICENSE
           cd project
-          zip -r "${{ github.workspace }}/StarterTemplate.zip" addons/StarterTemplate
+          zip -r "${{ github.workspace }}/StarterTemplate.zip" addons/starter_template
 
       - name: Create release
         uses: softprops/action-gh-release@v3

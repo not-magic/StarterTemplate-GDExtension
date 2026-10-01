@@ -1,4 +1,5 @@
 #include "gdexample.h"
+
 #include <godot_cpp/core/class_db.hpp>
 
 using namespace godot;
@@ -25,16 +26,16 @@ GDExample::GDExample() {
 GDExample::~GDExample() {
 }
 
-void GDExample::_process(double delta) {
-	time_passed += speed * delta;
+void GDExample::_process(double p_delta) {
+	time_passed += speed * p_delta;
 
-	Vector2 new_position = Vector2(
+	const Vector2 new_position = Vector2(
 			amplitude + (amplitude * sin(time_passed * 2.0)),
 			amplitude + (amplitude * cos(time_passed * 1.5)));
 
 	set_position(new_position);
 
-	time_emit += delta;
+	time_emit += p_delta;
 	if (time_emit > 1.0) {
 		emit_signal("position_changed", this, new_position);
 		time_emit = 0.0;

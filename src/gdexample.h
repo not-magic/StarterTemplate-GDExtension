@@ -5,7 +5,7 @@
 namespace godot {
 
 class GDExample : public Sprite2D {
-	GDCLASS(GDExample, Sprite2D)
+	GDCLASS(GDExample, Sprite2D) // NOLINT
 
 private:
 	double time_passed;
@@ -20,7 +20,7 @@ public:
 	GDExample();
 	~GDExample();
 
-	void _process(double delta) override;
+	void _process(double p_delta) override;
 	void set_amplitude(const double p_amplitude);
 	double get_amplitude() const;
 	void set_speed(const double p_speed);

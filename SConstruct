@@ -5,7 +5,7 @@ import sys
 # You can find documentation for SCons and SConstruct files at:
 # https://scons.org/documentation.html
 
-ADDON_NAME = 'StarterTemplate'
+ADDON_NAME = 'starter_template'
 
 
 # This lets SCons know that we're using godot-cpp, from the godot-cpp folder.
@@ -57,6 +57,46 @@ else:
 test_program = test_env.Program("tests/bin/tests", Glob("tests/*.cpp"))
 run_tests = test_env.Alias("tests", test_program, test_program[0].abspath)
 AlwaysBuild(run_tests)
+
+# --- Formatting and linting (.clang-format, .clang-tidy) ---
+# `scons format` rewrites src/ and tests/ in place with clang-format;
+# `scons tidy` runs clang-tidy over every src/*.cpp (plus headers under src/) with
+# the same include paths/defines the real build uses. Point CLANG_FORMAT /
+# CLANG_TIDY at a specific binary to override the one found on PATH. The
+# .clang-format/.clang-tidy files need a recent LLVM (distro clang 14 can't
+# parse them); `pip install clang-format clang-tidy` provides one.
+import subprocess
+
+godot_env = env
+lint_sources = sorted(str(f) for f in Glob("src/*.cpp") + Glob("src/*.h") + Glob("tests/*.cpp"))
+
+
+def run_format(target, source, env):
+    tool = os.environ.get("CLANG_FORMAT", "clang-format")
+    return subprocess.call([tool, "-i", "--style=file"] + lint_sources)
+
+
+def run_tidy(target, source, env):
+    tool = os.environ.get("CLANG_TIDY", "clang-tidy")
+    status = 0
+    for path in lint_sources:
+        if not path.endswith(".cpp") or path.startswith("tests"):
+            continue
+        compile_args = ["-I" + str(d) for d in godot_env["CPPPATH"]] + ["-std=c++17"]
+        for define in godot_env["CPPDEFINES"]:
+            if isinstance(define, (tuple, list)):
+                compile_args.append("-D{}={}".format(*define))
+            else:
+                compile_args.append("-D" + str(define))
+        status |= subprocess.call([tool, "--quiet", "--header-filter=.*/src/.*", path, "--"] + compile_args)
+    return status
+
+
+format_sources = Command("format", None, run_format)
+AlwaysBuild(format_sources)
+
+tidy_sources = Command("tidy", None, run_tidy)
+AlwaysBuild(tidy_sources)
 
 # --- Docs update (doc_classes/) ---
 # Regenerates doc_classes/*.xml from the classes' _bind_methods() by loading
