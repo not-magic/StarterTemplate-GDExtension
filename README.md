@@ -6,3 +6,8 @@ A starter template to make a native GDExtension. Based on (https://docs.godoteng
 * Updates wiki docs from a github action, from the godot doc_classes xml files
 * GitHub build action will compile and runs tests
 * GitHub release action will compile, .zip the addon and append it to any release with a `vX.X.X` tag format
+
+## Branching
+
+* To make the wiki doc Action work you need to update your `Settings | Actions | General | Workflow permissions` to be `Read and write permissions`
+* Create one dummy wiki page
