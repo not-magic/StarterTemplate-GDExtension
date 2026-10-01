@@ -1,6 +1,6 @@
 name: Release
 
-# Builds template_debug + template_release for linux/windows/macos, then
+# Builds template_debug + template_release for linux/windows/macos/android (arm64), then
 # packages project/addons/starter_template/ (source-free, binaries for every
 # platform included) into a zip attached to a GitHub Release. The zip's
 # internal layout is addons/starter_template/..., so it extracts directly
@@ -24,18 +24,28 @@ permissions:
 
 jobs:
   build:
-    name: ${{ matrix.platform }}
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: linux
+          - name: linux
+            platform: linux
             os: ubuntu-latest
-          - platform: windows
+            args: ""
+          - name: windows
+            platform: windows
             os: windows-latest
-          - platform: macos
+            args: ""
+          - name: macos
+            platform: macos
             os: macos-latest
+            args: ""
+          - name: android-arm64
+            platform: android
+            os: ubuntu-latest
+            args: arch=arm64
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,6 +59,12 @@ jobs:
       - name: Install SCons
         run: pip install scons
 
+      - name: Install Android NDK
+        if: matrix.platform == 'android'
+        shell: bash
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.1.13356709"
+
       # Pinned godot-cpp commit, so bumping the submodule invalidates the
       # cache key too.
       - name: Get submodule revisions
@@ -60,9 +76,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .scons_cache
-          key: scons-release-${{ matrix.platform }}-${{ hashFiles('src/**', 'SConstruct') }}-${{ steps.submodules.outputs.hash }}
+          key: scons-release-${{ matrix.name }}-${{ hashFiles('src/**', 'SConstruct') }}-${{ steps.submodules.outputs.hash }}
           restore-keys: |
-            scons-release-${{ matrix.platform }}-
+            scons-release-${{ matrix.name }}-
 
       # Runs the standalone (no godot-cpp) test in tests/ against template_debug
       # as a sanity check before spending time on the release build.
@@ -70,18 +86,18 @@ jobs:
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons_cache
         run: |
-          scons platform=${{ matrix.platform }} target=template_debug
+          scons platform=${{ matrix.platform }} ${{ matrix.args }} target=template_debug
           scons tests
 
       - name: Build template_release
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons_cache
-        run: scons platform=${{ matrix.platform }} target=template_release
+        run: scons platform=${{ matrix.platform }} ${{ matrix.args }} target=template_release
 
       - name: Upload binaries
         uses: actions/upload-artifact@v7
         with:
-          name: starter-template-bin-${{ matrix.platform }}
+          name: starter-template-bin-${{ matrix.name }}
           path: |
             project/addons/starter_template/bin/*.so
             project/addons/starter_template/bin/*.dll
