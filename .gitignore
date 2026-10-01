@@ -8,6 +8,7 @@
 project/addons/starter_template/bin/*.so
 project/addons/starter_template/bin/*.dylib
 project/addons/starter_template/bin/*.dll
+project/addons/starter_template/bin/*.wasm
 
 # Test binaries
 tests/bin/
