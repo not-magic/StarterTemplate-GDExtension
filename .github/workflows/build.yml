@@ -34,6 +34,14 @@ jobs:
             platform: ios
             os: macos-latest
             args: arch=arm64
+          - name: web
+            platform: web
+            os: ubuntu-latest
+            args: ""
+          - name: web-nothreads
+            platform: web
+            os: ubuntu-latest
+            args: threads=no
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,6 +53,12 @@ jobs:
 
       - name: Install SCons
         run: pip install scons
+
+      - name: Install Emscripten
+        if: matrix.platform == 'web'
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.11
 
       - name: Install Android NDK
         if: matrix.platform == 'android'
