@@ -30,6 +30,10 @@ jobs:
             platform: android
             os: ubuntu-latest
             args: arch=arm64
+          - name: ios
+            platform: ios
+            os: macos-latest
+            args: arch=arm64
     steps:
       - uses: actions/checkout@v7
         with:

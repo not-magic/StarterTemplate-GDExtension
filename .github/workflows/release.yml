@@ -1,6 +1,6 @@
 name: Release
 
-# Builds template_debug + template_release for linux/windows/macos/android (arm64), then
+# Builds template_debug + template_release for linux/windows/macos/android/ios (arm64), then
 # packages project/addons/starter_template/ (source-free, binaries for every
 # platform included) into a zip attached to a GitHub Release. The zip's
 # internal layout is addons/starter_template/..., so it extracts directly
@@ -45,6 +45,10 @@ jobs:
           - name: android-arm64
             platform: android
             os: ubuntu-latest
+            args: arch=arm64
+          - name: ios
+            platform: ios
+            os: macos-latest
             args: arch=arm64
     steps:
       - uses: actions/checkout@v7
@@ -94,6 +98,17 @@ jobs:
           SCONS_CACHE: ${{ github.workspace }}/.scons_cache
         run: scons platform=${{ matrix.platform }} ${{ matrix.args }} target=template_release
 
+      - name: Wrap iOS dylibs in xcframeworks
+        if: matrix.platform == 'ios'
+        working-directory: project/addons/starter_template/bin
+        run: |
+          for target in template_debug template_release; do
+            xcodebuild -create-xcframework \
+              -library libstarter_template.ios.$target.arm64.dylib \
+              -output libstarter_template.ios.$target.xcframework
+            rm libstarter_template.ios.$target.arm64.dylib
+          done
+
       - name: Upload binaries
         uses: actions/upload-artifact@v7
         with:
@@ -102,6 +117,7 @@ jobs:
             project/addons/starter_template/bin/*.so
             project/addons/starter_template/bin/*.dll
             project/addons/starter_template/bin/*.dylib
+            project/addons/starter_template/bin/*.xcframework
 
   package:
     name: Package addon
